@@ -250,20 +250,6 @@ def save_results(arg, models, epoch, scores, scores_tst, optims, schedulers,
     return best_acc_b, best_tst_acc_b, best_auc
 
 
-def correct_labels_with_ilr(arg, train_loader, train_eval_loader, epoch, correcting_info, kwargs_loader):
-    # trn_eval_ds.correct_labels(*correcting_info)
-    trn_ds = train_loader.dataset
-    corrected = trn_ds.correct_labels(*correcting_info, verbose=True)
-    if corrected:
-        print('Creating a new training dataloader...')
-        # n_training = [len(train_loader.dataset.label), sum(train_loader.dataset.label==1)]
-        train_sampler = create_loader(trn_ds, arg.batch_size, jobs=arg.workers, add_sampler=True,
-                                      get_sampler_only=True, weight_by_inv=False)
-        train_loader = torch.utils.data.DataLoader(trn_ds, sampler=train_sampler, drop_last=True,
-                                                   **kwargs_loader)
-    return train_loader
-
-
 def get_coteaching_models(arg, len_loader):
     model1, optimizers1, schedulers1, *_ = get_model(arg, checkpoint_name="checkpoint0.pth",
                                                      len_loader=len_loader, const_init=-1e-1)
@@ -537,7 +523,6 @@ def eval_train(model, dataloader, epoch, net_idx, writer=None, stats_file=None,
         plt.close('all')
 
     if writer:
-        # noisy = (prob <= 0.5).astype('uint8')
         noisy = noisy.astype('uint8')
 
         d = {'losses': losses, 'noisy': noisy, 'labels': labels, 'ood': ood_masks,
@@ -829,12 +814,6 @@ def run_train_loop(arg, train_loader, val_loader, test_loader, train_eval_loader
         # best_acc_b, best_tst_acc_b, best_auc = save_results(arg, models, epoch, scores, scores_tst,
         #                                                     optims, schedulers,
         #                                                     best_acc_b, best_tst_acc_b, best_auc, stats_file=None)
-
-        if epoch >= arg.epoch_start_correct:
-            correct_labels_with_ilr(arg, train_loader, train_eval_loader, epoch, correcting_info, kwargs_loader)
-            # evaluate_ood_viz(models[0], train_raw_loader, ood_test_loader, ood_control_loader,
-            #                  set_name='train_tsne', epoch=epoch, writer=writer,
-            #                  val_loader=val_loader, test_loader=test_loader, out_val=out_val, out_tst=out_tst)
 
 
 def make_train_loader_wrapper(arg, noisy_idx=None, ood_idx=None, kwargs_loader=None, is_raw=False, trn_ds=None,
