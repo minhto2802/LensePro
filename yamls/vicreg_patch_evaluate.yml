@@ -1,0 +1,56 @@
+exp_dir: experiments/vicreg_patch_bk_tmp6/wp_avg_str32_eval_SSLinCore100
+
+root_dir: /ssd003/home/minht/projects/prostate_cancer_classification_ipcai2024/
+data_root: /ssd005/projects/exactvu_pca/bk_ubc/patches/patch_48x48_str32_avg/*/*_core
+data_root_test: /ssd005/projects/exactvu_pca/bk_ubc/patches/patch_48x48_str32_avg/*/*_core
+data_root_ood_test: /ssd005/projects/exactvu_pca/bk_ubc/patches/patch_48x48_str32_oop_avg/*/*_prostate
+data_root_ood_control: /ssd005/projects/exactvu_pca/bk_ubc/patches/patch_48x48_str32_ooc_avg/*/*_core
+
+exp_name: spatial
+print_freq: 100
+arch: resnet50  # convnext_tiny  # resnet50
+epochs: 100
+batch_size: 128
+lr_backbone: 1.e-4  # 1.e-3
+#lr_head: 1.e-3  # 1.e-3  # 0.3
+lr_head: 1.e-3  # 7.e-4  # 1.e-3  # 0.3
+weight_decay: 1.e-2  # 1.e-6  # 1.0e-6
+norm: True
+num_class: 2
+min_inv: 0.4  # ##
+
+crop_size: 32
+
+criterion: ce # ce isomax gce nce_agce ##
+pretrained:
+unfreeze: 100 #
+
+weights: finetune  # finetune freeze #
+workers: 10
+seed: 1
+use_wandb: False
+
+single_model: True # False True # # #
+
+# ConvNext args
+drop_path_rate: 0.1
+layer_scale_init_value: 0.0
+in_channels: 1
+
+# iLR
+inv_dif_thr: 0.1
+prob_thr: .9
+epoch_start_correct: .inf  # .inf  # 10 .inf
+
+# coteaching
+forget_rate: 0.1
+exponent: 1
+num_gradual: 20
+
+# divide_mix
+p_threshold: 0.5
+warmup: 5  # 15
+
+# OOD
+ood_thr: 0.0
+filter_eval: False
