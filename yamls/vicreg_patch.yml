@@ -1,0 +1,48 @@
+root_dir: /ssd003/home/minht/projects/prostate_cancer_classification_ipcai2024/
+exp_dir: experiments/vicreg_patch_search_bm/wp_avg_str8_in_core
+#data_root: /home/minh/PycharmProjects/Preparation/DataPreparation/dummy/snapshots_in_use_Amoon_2/patches/patch_48x48_str32_avg/*/*_core
+#data_root: /ssd005/projects/exactvu_pca/bk_ubc/patches/patch_48x48_str32_avg/*/*_core
+data_root: /ssd005/projects/exactvu_pca/bk_ubc/patches/patch_36x36_str8_b_v1_shiftedUp_avg/*/*_core
+
+#data_root: /home/minh/PycharmProjects/Preparation/DataPreparation/dummy/snapshots_in_use_Amoon_2/patches/patch_36x36_str32_inProsateinP_avg/*/*_core
+#data_root: /home/minh/PycharmProjects/Preparation/DataPreparation/dummy/snapshots_in_use_Amoon_2/patches/patch_48x48_str32/*/*_core
+#data_root: /home/minh/PycharmProjects/Preparation/DataPreparation/dummy/snapshots_in_use_Amoon_2/patches/patch_48x48_str32_b_inProsate_avg/*/*_core
+log_freq_time: 60
+arch: resnet50  # resnet50 convnext_tiny
+mlp: 8192-8192-8192
+seed: 5
+norm: True
+
+crop_size: 24
+
+# Optim
+optimizer: lars # adamw
+epochs: 100
+batch_size: 256  # 2048
+base_lr: 0.2
+#base_lr: 1.0e-4 # 0.00075
+weight_decay: 1.0e-6  # 0.05  # 1.0e-6
+end_lr_ratio: 0.001
+warmup_epochs: 10
+maps_lr_ratio: 0.1
+# adamw --base-lr 0.00075
+
+# Loss
+sim_coef: 25.0  # Invariance regularization loss coefficient
+std_coef: 25.0  # Variance regularization loss coefficient
+cov_coef: 1.0   # Covariance regularization loss coefficient
+
+# Running
+num_workers: 10
+device: cuda
+
+# Distributed (not used currently)
+world_size: 1
+local_rank: -1
+dist_url: 'env://'
+
+# ConvNext args
+drop_path_rate: 0.1
+layer_scale_init_value: 0.0
+in_channels: 1
+

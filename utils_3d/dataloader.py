@@ -1,10 +1,7 @@
 import os
 import numpy as np
-# from tsai.data.transforms import *
 from torch.utils.data import DataLoader
 
-from .dataset import NumpyDataset, NumpyDatasetExtracted
-# from utils import to_categorical, create_loader  # get_transform
 from utils import to_categorical, create_loader
 
 
@@ -102,65 +99,7 @@ def gen_data_loader(opt, input_set, self_train=False, drop_last=False, return_in
     else:
         raise NotImplementedError
 
-    if opt.paths.extract_root is None:
-        trn_ds = NumpyDataset(files[trn_idx], label[trn_idx], random_crop_ts=True, ts_len=opt.ts_len,
-                              input_dim=opt.input_dim,
-                              augment=True,
-                              # augment=False,
-                              drop_range=(0.0, 0.3),  # 0.3),
-                              norm=opt.normalize_input,
-                              transform=None,
-                              patch_info=(num_patches, patch_size),
-                              is_train=True, metadata=metadata[trn_idx],
-                              min_inv=opt.min_inv,
-                              max_inv=1,
-                              shift_range=opt.shift_range,
-                              n_views=opt.n_views,
-                              use_anchor=opt.use_anchor,
-                              # transform=get_transform(['window_warp']),
-                              grid=opt.grid,
-                              self_train=self_train,
-                              return_info=return_info,
-                              exclude_benign=opt.exclude_benign,
-                              stats=stats,
-                              )
-    elif not get_eval_only:
-        from functools import partial
-        # TS_tfms = [
-        #     TSIdentity,
-        #     TSMagAddNoise,
-        #     (TSMagScale, .02, .2),
-        #     (partial(TSMagWarp, ex=0), .02, .2),
-        #     (partial(TSTimeWarp, ex=[0, 1, 2]), .02, .2),
-        # ]
-        # transform = RandAugment(TS_tfms, N=3, M=5)
-        # transform = RandAugment([TSSmooth, TSHorizontalFlip, TSVerticalFlip, TSTranslateX, TSRandomShift, ],
-        #                         N=2, M=3)
-        transform = None
-        trn_ds = NumpyDatasetExtracted(opt.paths.extract_root,
-                                       opt.extract_dirs,
-                                       opt.ts_len,
-                                       transform=transform,
-                                       # transform=get_transform(['window_warp']),
-                                       patch_info=(num_patches, patch_size),
-                                       min_inv=opt.min_inv, max_inv=1.,
-                                       dif_learning=opt.dif_learning,
-                                       cut_mix_1d=opt.cut_mix_1d,
-                                       rand_erase=opt.random_erase,
-                                       exclude_benign=opt.exclude_benign,
-                                       ts_start=opt.ts_start,
-                                       stats=stats,
-                                       data_suffix='_miv.4_v2',  # '_shuffled'
-                                       norm=True,
-                                       )
         stats = trn_ds.stats
-
-    # if not self_train:
-    #     sampler = create_loader(trn_ds, opt.train_batch_size, jobs=opt.num_workers,
-    #                             add_sampler=True,
-    #                             get_sampler_only=True, weight_by_inv=False)
-    # else:
-    #     sampler = None
 
     trn_dl = make_train_loader(trn_ds, opt, drop_last=drop_last, balance=balance) if not get_eval_only \
         else None

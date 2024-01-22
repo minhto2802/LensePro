@@ -34,11 +34,9 @@ from utils import fix_random_seed, net_interpretation, accumulate_dict
 
 from utils_3d.dataloader import create_loader
 from utils_3d.optimizers import get_scheduler
-from utils_3d.dataset import PatchLabeledDataset, PatchLabeledDatasetILR, CropFixSize
+from utils_3d.dataset import PatchLabeledDataset, CropFixSize
 
 from tensorboardX import SummaryWriter
-
-from loss_functions import ELR
 
 
 def parse_args() -> dict:
@@ -121,7 +119,6 @@ def on_batch_end(print_freq, lr_backbone, lr_head, losses, protoc_losses, t_epoc
             writer.add_scalar(f'loss/cls_net{2}', losses[1].item(), current_step)
         else:
             writer.add_scalar(f'loss/cls_net{net_idx}', losses.item(), current_step)
-        # writer.add_scalar('loss/protoc_dst', protoc_dst.item(), current_step)
         if len(protoc_losses):
             writer.add_scalar(f'loss/protoc_dst_net1', protoc_losses[0].item(), current_step)
             writer.add_scalar(f'loss/protoc_dst_net2', protoc_losses[1].item(), current_step)
@@ -158,7 +155,6 @@ def get_model(arg, checkpoint_name="checkpoint.pth", len_loader=None, const_init
         backbone, embedding = resnet.__dict__[arg.arch](
             zero_init_residual=True,
             num_channels=arg.in_channels)
-    # backbone, embedding = resnet.__dict__[arch](zero_init_residual=True, num_channels=1)
 
     if pretrained:
         print('/'.join([root_dir, pretrained]))
@@ -171,49 +167,27 @@ def get_model(arg, checkpoint_name="checkpoint.pth", len_loader=None, const_init
         }
         backbone.load_state_dict(state_dict, strict=False)
 
-    # dropout = nn.Dropout(0.2)
-    # init_range = 0.1
-    # head.weight.data.uniform_(-init_range, init_range)
-
     if arg.single_model:
         head = nn.Linear(embedding, 2)
         head.weight.data.normal_(mean=0.0, std=0.01)
         head.bias.data.zero_()
     else:
-        # from loss_functions.isomax import IsoMaxLossFirstPart
         from loss_functions.isomaxplus import IsoMaxPlusLossFirstPart as IsoMaxLossFirstPart
         head = IsoMaxLossFirstPart(embedding, arg.num_class, const_init=const_init)
 
     model = nn.Sequential(backbone, head)
-    # model = nn.DataParallel(model)
     model.cuda()
 
     if weights == "freeze":
         backbone.requires_grad_(False)
         head.requires_grad_(True)
 
-    from utils.novograd import NovoGrad
     optims = [
         optim.SGD(head.parameters(), lr_head, momentum=0.9, weight_decay=weight_decay, nesterov=True),
         optim.SGD(backbone.parameters(), lr_backbone, momentum=0.9, weight_decay=weight_decay, nesterov=True)]
-    # NovoGrad(head.parameters(), lr=arg.lr_head, weight_decay=arg.weight_decay),
-    # NovoGrad(backbone.parameters(), lr=arg.lr_backbone, weight_decay=arg.weight_decay)]
-    # optim.AdamW(head.parameters(), lr=arg.lr_backbone, weight_decay=arg.weight_decay),
-    # optim.AdamW(backbone.parameters(), lr=arg.lr_backbone, weight_decay=arg.weight_decay)]
     schedulers = [
-        # optim.lr_scheduler.CosineAnnealingLR(optims[0], epochs),
-        # optim.lr_scheduler.CosineAnnealingLR(optims[1], epochs)
         get_scheduler('one_cycle', len_loader, arg.epochs, optims[0], arg.lr_head),
         get_scheduler('one_cycle', len_loader, arg.epochs, optims[1], arg.lr_backbone)
-
-        # optim.lr_scheduler.CyclicLR(optims[0], lr_head/1e5, lr_head, scale_mode='iterations',
-        #                             step_size_up=50, step_size_down=None
-        #                             , mode='exp_range', gamma=.999,
-        #                             cycle_momentum=False),
-        # optim.lr_scheduler.CyclicLR(optims[1], lr_head/1e5, lr_head, scale_mode='iterations',
-        #                             step_size_up=50, step_size_down=None
-        #                             , mode='exp_range', gamma=.999,
-        #                             cycle_momentum=False)
     ]
 
     # automatically resume from checkpoint if it exists
@@ -272,7 +246,6 @@ def save_results(arg, models, epoch, scores, scores_tst, optims, schedulers,
             scheduler0=schedulers[i * len(models)].state_dict(),
             scheduler1=schedulers[i * len(models) + 1].state_dict(),
         )
-        # torch.save(state, '/'.join([arg.exp_dir, f"checkpoint{i}.pth"]))
 
     return best_acc_b, best_tst_acc_b, best_auc
 
@@ -379,14 +352,6 @@ def evaluate_ood_viz(model, dataloader, ood_test_loader, ood_control_loader,
     # min_dist = torch.tensor(-outputs).min(dim=1)[0]
     scores = torch.tensor(outputs).max(dim=1)[0]
 
-    # probabilities = torch.nn.Softmax(dim=1)(outputs)
-    # scores = outputs.max(dim=1)[0] + outputs.mean(dim=1) + (probabilities * torch.log(probabilities)).sum(dim=1)
-
-    # ood_mask = get_median_filtered(scores.numpy())[0]
-
-    # import matplotlib
-    # matplotlib.use('TkAgg')
-    # import pylab as plt
     d = {'loss': loss, 'scores': scores, 'labels': labels, 'set_names': set_names}
     df = pd.DataFrame(data=d)
     fig = sns.histplot(df, x='scores', hue='set_names', common_norm=False, element="step", fill=False)
@@ -435,7 +400,6 @@ def eval_ood_v0(models, dataloader, ood_test_loader, epoch=0, writer=None, start
                 ood_thr=50,
                 ind_common_update=None, ind_non_update=None, net_idx=None):
     if (epoch < start_filter_epoch - 1) or (ood_thr == 100):
-        # return [np.zeros(len(dataloader.dataset), dtype='uint8') for _ in range(2)], [None, None]
         return None
 
     if net_idx is None or len(net_idx) < len(models):
@@ -445,46 +409,31 @@ def eval_ood_v0(models, dataloader, ood_test_loader, epoch=0, writer=None, start
     outputs_ood_test = [eval_forward(model, ood_test_loader, f'Net{net_idx} Eval OOD Test')[-1]
                         for net_idx, model in zip(net_idx, models)]
 
-    # outputs = outputs_ood_test  # for debugging
-
     def min_max_norm(x):
         return (x - x.min()) / (x.max() - x.min())
 
     outputs = [torch.concat([out, out_ood_test]) for out, out_ood_test in zip(outputs_train, outputs_ood_test)]
     set_names = np.concatenate([np.tile('train', len(dataloader.dataset)),
                                 np.tile('ood_test', len(ood_test_loader.dataset))])
-    # set_names = np.tile('train', len(dataloader.dataset))
-    # set_names = np.tile('ood_test', len(ood_test_loader.dataset))
 
     scores = [torch.tensor(out).max(dim=1)[0] for out in outputs]
-    # scores = [(scores[0] + scores[1])/2, (scores[0] + scores[1])/2]
-    # scores = [torch.tensor(out).sum(dim=1) for out in outputs]
     scores_normed = [min_max_norm(score) for score in scores]
     ood_masks = []
 
     for i, _scores in enumerate(scores):
         d = {'scores': _scores, 'scores_normed': scores_normed[i], 'set_names': set_names}
         df = pd.DataFrame(data=d)
-        # thr_ood_test = np.median(df.scores[df.set_names == 'ood_test'].to_numpy())
-        # thr_ood_test = np.percentile(df.scores[df.set_names == 'train'].to_numpy(), ood_thr)
         thr_ood_test = np.percentile(df.scores[df.set_names == 'ood_test'].to_numpy(), ood_thr)
-        # thr_50 = np.percentile(df.scores[df.set_names == 'ood_test'].to_numpy(), 50)
         ood_masks.append(np.array([_scores > thr_ood_test for _scores in df.scores[df.set_names == 'train']],
                                   dtype='uint8'))
 
         if writer is not None:
             fig = sns.histplot(df, x='scores_normed', hue='set_names', common_norm=False, element="step", fill=False)
-            # sns.histplot(df[df.set_names == 'train'].scores[ind_common_update], common_norm=False, element="step")
-            # thr_train = -get_median_filtered(-df.scores[df.set_names == 'train'].to_numpy())[1]
-            # plt.axvline(thr_train, color='r')
             plt.axvline(np.percentile(df.scores_normed[df.set_names == 'ood_test'].to_numpy(), ood_thr), color='r')
-            # plt.axvline(thr_50, color='y')
             writer.add_figure(f'ood/scores_{net_idx}', fig.get_figure(), global_step=epoch)
             plt.close()
 
-    # return scores <= thresholds
     return ood_masks, outputs_train, thr_ood_test
-    # return thr_ood_test
 
 
 def eval_train(model, dataloader, epoch, net_idx, writer=None, stats_file=None,
@@ -496,19 +445,12 @@ def eval_train(model, dataloader, epoch, net_idx, writer=None, stats_file=None,
         outputs = eval_forward(model, dataloader, f'Net{net_idx} Eval Train')[-1]
     labels = dataloader.dataset.label
     losses = criterion(outputs, labels, reduction='none').cpu().numpy()
-    # losses = IsoMaxLossSecondPart(1)(outputs, labels, reduction='none').cpu().numpy()
     losses = (losses - losses.min()) / (losses.max() - losses.min())
 
     def cluster_by_gmm(loss, verbose=False):
         gmm = GaussianMixture(n_components=2, max_iter=200, tol=1e-2, reg_covar=5e-4)
         gmm.fit(loss.reshape(-1, 1))
         clean_idx, noisy_idx = gmm.means_.argmin(), gmm.means_.argmax()
-        # if stats_file and verbose:
-        #     stats_file.write('Epoch {} (net {}): GMM results: {} with weight {}\t'
-        #                      '{} with weight {}\n'.format(epoch, net_idx, gmm.means_[clean_idx],
-        #                                                   gmm.weights_[clean_idx],
-        #                                                   gmm.means_[noisy_idx], gmm.weights_[noisy_idx]))
-        #     stats_file.flush()
         _prob = gmm.predict_proba(loss.reshape(-1, 1))
         _prob = _prob[:, clean_idx]
         return _prob
@@ -521,9 +463,6 @@ def eval_train(model, dataloader, epoch, net_idx, writer=None, stats_file=None,
         prob = np.zeros(len(losses))
         for cls in np.unique(labels):
             _prob = cluster_by_gmm(losses[labels == cls])
-            # if cls == 1:
-            #     if sum(_prob <= 0.5) > sum(_prob > 0.5):  # if there are more noisy samples than clean samples
-            #         _prob = 1 - _prob
             prob[labels == cls] = _prob
 
     p_thr = np.clip(0.5, prob.min() + 1e-5, prob.max() - 1e-5)
@@ -536,12 +475,7 @@ def eval_train(model, dataloader, epoch, net_idx, writer=None, stats_file=None,
         noisy[clean_idx] = 0
 
     # match the percentage of noisy labels of each class
-    # noisy = match_noisy_percent(noisy, labels)
     prob[np.invert(noisy)] = 1
-
-    # Remove low loss from the noisy cluster
-    # min_clean_loss = losses[noisy == 0].min()
-    # noisy[losses <= min_clean_loss] = 0
 
     def plot(separator: str = 'Clean/Noisy', suptitle='GMM clustering', hue='noisy', fig_tag='gmm',
              target='Noisy', hue_order=None):
@@ -775,13 +709,7 @@ def warmup(arg, models, optims, schedulers, train_loader, epoch, forget_rate_sch
                 *outputs, labels, forget_rate_schedule[epoch],
                 num_classes=2, extra_outputs=True, mask=[ood_mask[idx] for ood_mask in ood_masks]
             )
-            # losses = [loss + protoc_loss(model) * 1 for loss, model in zip(losses, models)]  # 75
             _writer = writer if first_batch else None
-            # protoc_losses = [protoc_loss(*models, _writer, schedulers[0].last_epoch), protoc_loss(*models[::-1])]
-            # protoc_losses = [protoc_loss(models[0], None, _writer, schedulers[0].last_epoch),
-            #                  protoc_loss(models[1])]
-            # protoc_losses = [protoc_loss(*models), protoc_loss(*models[::-1])]
-            # losses = [loss + loss_protoc * 1 for loss, loss_protoc, model in zip(losses, protoc_losses, models)]
 
             [optimizer.zero_grad() for optimizer in optims]
             [loss.backward() for loss in losses]
@@ -853,14 +781,6 @@ def run_train_loop(arg, train_loader, val_loader, test_loader, train_eval_loader
         # train
         outputs_train_raw = [None, None]
         if epoch < arg.warmup:
-            # warmup(arg, models, optims, schedulers, train_loader, epoch, forget_rate_schedule,
-            #        ood_masks, start_time, writer, stats_file)
-            # eval_train(models[1], train_raw_loader, epoch, 2, writer, stats_file,
-            #            ood_masks[1], outputs_train_raw[1])
-            # eval_train(models[0], train_raw_loader, epoch, 1, writer, stats_file,
-            #            ood_masks[0], outputs_train_raw[0])
-            # train_raw_loader_oversampling = make_train_loader_wrapper(
-            #     arg, oversampling=True, transform=CropFixSize(in_channels=arg.in_channels))
 
             for i in range(len(models)):
                 if arg.single_model:
@@ -870,39 +790,9 @@ def run_train_loop(arg, train_loader, val_loader, test_loader, train_eval_loader
                 run_train_epoch(arg, models[i], _optims, _schedulers,
                                 train_loader, epoch, None, None,
                                 start_time, writer=writer, net_idx=i + 1, criterion=criterion)
-
-                # ood_mask_b = [None]
-                # # ood_mask_b, _ = eval_ood(
-                # ood_thr = eval_ood(
-                #     [models[1] if i == 0 else models[0]],
-                #     # [models[i]],
-                #     train_raw_loader, ood_test_loader, epoch=epoch, writer=writer,
-                #     start_filter_epoch=-1, ood_thr=100 - ood_thr_schedule[epoch],
-                #     net_idx=[2 if i == 0 else 1],
-                #     # net_idx=[i + 1]
-                # )
-                # # ood_mask_b[0] = None  # TODO: temporary
-                # # train_loader_filtered = make_train_loader_wrapper(arg, ood_idx=ood_mask_b[0],
-                # #                                                   kwargs_loader=kwargs_loader)
-                #
-                # train_raw_loader_filtered = make_train_loader_wrapper(arg, ood_idx=ood_mask_b[0], is_raw=True)
-                # eval_train(models[i], train_raw_loader, epoch, i + 1, writer, stats_file,
-                #            None, outputs_train_raw[i], criterion=criterion)
         else:
             def train_net(model_a, model_b, _optims, _schedulers, net_idx):
                 nonlocal train_raw_loader, outputs_train_raw
-                # """Filter OOD data from the raw training set """
-                # ood_mask_b, outputs_train_raw = eval_ood(
-                #     [model_b], train_raw_loader, ood_test_loader, epoch=epoch, writer=writer,
-                #     start_filter_epoch=-1,
-                #     # ood_thr=100 - ood_thr_schedule[epoch],
-                #     ood_thr=98,
-                #     net_idx=[2 if net_idx == 1 else 1]
-                #     # net_idx=[net_idx]
-                # )[:2]
-                # train_raw_loader_filtered = make_train_loader_wrapper(arg, ood_idx=ood_mask_b[0], is_raw=True)
-                # if ood_mask_b[0] is not None:
-                #     outputs_train_raw = [outputs_train_raw[0][ood_mask_b[0] == 0]]  # filter the predictions
 
                 """Filter label noise from the actual training set """
                 noisy_idx_b, losses_b = eval_train(model_b, train_raw_loader, epoch, 2 if net_idx == 1 else 1,
@@ -910,10 +800,7 @@ def run_train_loop(arg, train_loader, val_loader, test_loader, train_eval_loader
                 _train_loader = make_train_loader_wrapper(
                     arg,
                     removed_idx=[noisy_idx_b],  # order matters
-                    # removed_idx=[ood_mask_b[0], noisy_idx_b],  # order matters
-                    # ood_idx=ood_mask_b[0], noisy_idx=noisy_idx_b,
                     kwargs_loader=kwargs_loader,
-                    # transform=CropFixSize(in_channels=arg.in_channels)
                 )
                 run_train_epoch(
                     arg, model_a, _optims, _schedulers, _train_loader, epoch, None, None,
@@ -927,7 +814,6 @@ def run_train_loop(arg, train_loader, val_loader, test_loader, train_eval_loader
                 )
                 return _ood_thr  # _ood_thr
 
-            # train_net(models[0], models[0], optims[:2], schedulers[:2], net_idx=1)  # Net 1
             ood_thr_dict1 = train_net(*models, optims[:2], schedulers[:2], net_idx=1)  # Net 1
             ood_thr_dict2 = train_net(*models[::-1], optims[2:], schedulers[2:], net_idx=2)  # Net 2
             if ood_thr_dict1 is not None:
